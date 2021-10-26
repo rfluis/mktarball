@@ -1,0 +1,119 @@
+#!/bin/sh
+IFS=$'\n'
+rightnow=$(date +%Y%m%d%H%M%S)
+args=("$@")
+storedir=$(echo ~)"/.backup/"
+mkdir -p $storedir
+
+if [ $# -eq 0 ] 
+then
+  echo "  mktarball script  Version 2 --  Ricardo - Francisco Luis Martinez"
+  echo "  Usage:"
+  echo "\$ mktarball folder"
+  echo "  The output filename will be the basename of the folder"
+  echo "  and stored in " $storedir
+  echo "  Or"
+  echo "\$ mktarball dest source1 <source2> <source3> ... <source-n>"
+  echo "  The output filename will be dest-$rightnow.tar.bz2"
+  exit 1
+fi
+
+MKTARBALL_NOCONFIRM=true
+
+if ([ $# -eq 1 ] && [ "$1" = "--no-confirm" ])
+then
+  export MKTARBALL_NOCONFIRM=true
+  echo MKTARBALL_NOCONFIRM = "$MKTARBALL_NOCONFIRM"
+  exit 0
+fi
+
+
+if [ $# -eq 1 ]
+then
+  if (([[ -d $1 ]] || [[ -f $1 ]]) && [ "$(ls -A $1)" ])
+  then
+    if [ -d "$1" ] ; then echo "Source folder: " $1 ; fi
+    if [ -f "$1" ] ; then echo "Source file: " $1 ; fi
+    tarpath=$storedir$(basename $1)
+    tarball=$storedir$(basename $1)"/"$(basename $1)"-"$rightnow".tar.bz2"
+    echo "Outfile: " $tarball
+    if [ "$MKTARBALL_NOCONFIRM" = "true" ]
+    then
+      response="yes"
+    else
+      read -r -p "Are you sure? [yes/no] " response
+    fi
+    if [[ "$response" =~ ^([yY][eE][sS]|[sS][iI])+$ ]]
+    then
+      mkdir -p $tarpath
+      tar -cv $1 | bzip2 -9c > $tarball
+      echo "Archived " $1 " in " $tarball
+      ls -shl $tarball
+      #echo MKTARBALL_NOCONFIRM = "$MKTARBALL_NOCONFIRM"
+    else
+      echo "Aborted!!"
+    fi
+  else
+    tarball=$(find $storedir | grep $(basename $1) | grep tar | sort | tail -n 1)
+    if [ ! -z $tarball ]
+    then
+      echo "Source tarball found: " $tarball
+      echo "Will be extracted here."
+      if [ "$MKTARBALL_NOCONFIRM" = "true" ]
+      then
+        response="yes"
+      else
+        read -r -p "Are you sure? [yes/no] " response
+      fi
+      if [[ "$response" =~ ^([yY][eE][sS]|[sS][iI])+$ ]]
+      then
+        tarball_ext=${tarball##*.}
+        if [ "$tarball_ext" = "bz2" ] 
+        then
+          bzip2 -dc $tarball | tar -xv
+        else
+          if [ "$tarball_ext" = "lz4" ] 
+          then
+            lz4 -dc $tarball | tar -xv
+          else
+            tar -xvf $tarball
+          fi
+        fi
+        echo "Extracted " $tarball
+      else
+        echo "Aborted!!" 
+      fi
+    else
+      echo "No file found in " $storedir " with pattern " $(basename $1)
+    fi
+  fi
+fi
+
+if [ $# -gt 1 ]
+then
+  outfile=$1"-"$rightnow".tar.bz2"
+  if [ -e $outfile ] 
+  then
+    echo "Unexpectedly "$outfile" already exists O-O"
+    exit 1
+  else
+    for index in $(seq 1 $#)
+    do
+      if [ ! -e ${args[$index]} ] 
+      then
+        echo ${args[$index]} "does not exists"
+        exit 1
+      fi
+      
+      if [ $index -eq 1 ] 
+      then
+        infiles=${args[$index]}
+      else
+        infiles=$infiles$IFS${args[$index]}
+      fi # first without space
+    done # end loop of args
+    tar -cv $infiles | bzip2 -9c > $outfile
+  fi # outfile not exists
+fi # the script was called correctly
+
+
